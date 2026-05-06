@@ -1,0 +1,41 @@
+{
+  "name": "repo-skill-extractor",
+  "version": "0.1.0",
+  "description": "Extract repo-specific Codex skill candidates from a local repository and ask local Codex to write project skills.",
+  "type": "module",
+  "bin": {
+    "rse": "dist/index.js"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "dev": "tsx src/index.ts",
+    "build": "tsup src/index.ts --format esm --dts --clean",
+    "start": "node dist/index.js",
+    "typecheck": "tsc --noEmit"
+  },
+  "keywords": [
+    "codex",
+    "skills",
+    "cli",
+    "repository-analysis"
+  ],
+  "license": "MIT",
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "execa": "^9.6.0",
+    "fast-glob": "^3.3.3",
+    "ignore": "^7.0.5",
+    "picocolors": "^1.1.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.14",
+    "tsup": "^8.3.5",
+    "tsx": "^4.19.3",
+    "typescript": "^5.7.3"
+  }
+}

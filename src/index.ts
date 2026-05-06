@@ -11,6 +11,7 @@ import { writeCodexPrompt } from "./prompt.js";
 import type { ExtractionRun } from "./types.js";
 
 const VERSION = "0.1.0";
+const DEFAULT_BASE_BRANCH = "main";
 
 async function main(): Promise<void> {
   const { repoPath, baseBranch } = parseArgs(process.argv.slice(2));
@@ -38,7 +39,7 @@ async function main(): Promise<void> {
   const { candidates, rejectedCandidates } = detectSkillCandidates(facts);
 
   const run: ExtractionRun = {
-    tool: "repo-skill-extractor",
+    tool: "rse-project",
     generatedAt: new Date().toISOString(),
     baseBranch,
     skillBranch,
@@ -96,30 +97,30 @@ function parseArgs(args: string[]): { repoPath: string; baseBranch: string } {
 
   const unknownFlag = args.find((arg) => arg.startsWith("-"));
   if (unknownFlag) {
-    throw new Error(`Unknown option: ${unknownFlag}. This MVP intentionally supports only repoPath and baseBranch.`);
+    throw new Error(`Unknown option: ${unknownFlag}. This MVP intentionally supports only a project path.`);
   }
 
-  const [repoPath, baseBranch, ...extra] = args;
-  if (!repoPath || !baseBranch || extra.length > 0) {
+  const [repoPath, ...extra] = args;
+  if (!repoPath || extra.length > 0) {
     printHelp();
-    throw new Error("Expected exactly two arguments: <repoPath> <baseBranch>.");
+    throw new Error("Expected exactly one argument: <repoPath>.");
   }
 
-  return { repoPath, baseBranch };
+  return { repoPath, baseBranch: DEFAULT_BASE_BRANCH };
 }
 
 function printHelp(): void {
-  console.log(`repo-skill-extractor ${VERSION}
+  console.log(`rse-project ${VERSION}
 
 Usage:
-  rse <repoPath> <baseBranch>
+  rse-project <repoPath>
 
 Example:
-  rse /path/to/project main
+  rse-project /path/to/project
 
 What it does:
   - verifies the target Git worktree is clean
-  - creates a new rse/skills-* branch from <baseBranch>
+  - creates a new rse/skills-* branch from main
   - writes .skill-extraction artifacts
   - runs codex exec with full access so Codex can create AGENTS.md and .agents/skills
 `);

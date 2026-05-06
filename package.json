@@ -1,10 +1,10 @@
 {
-  "name": "repo-skill-extractor",
+  "name": "rse-project",
   "version": "0.1.0",
   "description": "Extract repo-specific Codex skill candidates from a local repository and ask local Codex to write project skills.",
   "type": "module",
   "bin": {
-    "rse": "dist/index.js"
+    "rse-project": "dist/index.js"
   },
   "files": [
     "dist",

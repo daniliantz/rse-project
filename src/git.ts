@@ -19,7 +19,7 @@ export async function ensureCleanWorktree(repoRoot: string): Promise<void> {
     throw new Error(
       [
         "Target repository has uncommitted changes.",
-        "Commit, stash, or clean them before running repo-skill-extractor.",
+        "Commit, stash, or clean them before running rse-project.",
         "This protects existing user work before creating the skills branch."
       ].join(" ")
     );
@@ -54,7 +54,7 @@ async function resolveStartPoint(repoRoot: string, baseBranch: string): Promise<
   }
 
   throw new Error(
-    `Cannot find base branch "${baseBranch}" locally or as "${originRef}". Fetch it first or pass an existing branch.`
+    `Cannot find base branch "${baseBranch}" locally or as "${originRef}". Fetch or create main before running rse-project.`
   );
 }
 

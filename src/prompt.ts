@@ -83,8 +83,8 @@ Create or update root \`AGENTS.md\`.
 
 If \`AGENTS.md\` already exists, preserve existing content and add/update only this marked section:
 
-\`<!-- repo-skill-extractor:start -->\`
-\`<!-- repo-skill-extractor:end -->\`
+\`<!-- rse-project:start -->\`
+\`<!-- rse-project:end -->\`
 
 Include:
 

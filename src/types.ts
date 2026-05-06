@@ -126,7 +126,7 @@ export interface SkillCandidate {
 }
 
 export interface ExtractionRun {
-  tool: "repo-skill-extractor";
+  tool: "rse-project";
   generatedAt: string;
   baseBranch: string;
   skillBranch: string;

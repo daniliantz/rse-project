@@ -77,6 +77,7 @@ export interface RepoFacts {
   repoRoot: string;
   repoName: string;
   packageManager: PackageManager;
+  packageBins: string[];
   languages: string[];
   frameworks: string[];
   packageScripts: Record<string, string>;

@@ -19,6 +19,7 @@ import type {
 
 type PackageJson = {
   name?: string;
+  bin?: string | Record<string, string>;
   scripts?: Record<string, string>;
   dependencies?: Record<string, string>;
   devDependencies?: Record<string, string>;
@@ -59,26 +60,65 @@ const ALWAYS_IGNORE = [
 const IMPORTANT_DIRS: Record<string, string> = {
   app: "application routes or app-level source",
   pages: "route-level page components",
+  screens: "screen-level UI modules",
+  views: "view-level UI modules",
+  layouts: "layout and shell components",
   src: "main source tree",
   components: "shared UI components",
+  ui: "UI primitives and shared components",
+  widgets: "composed UI widgets",
   features: "feature modules and state",
+  modules: "feature or domain modules",
+  entities: "domain entity modules",
   lib: "shared application utilities",
   shared: "shared adapters and utilities",
   hooks: "shared hooks",
   types: "shared type definitions",
+  models: "domain or DTO models",
+  schemas: "validation or data schemas",
   server: "server-side code",
   api: "API surface",
+  clients: "API or integration clients",
+  client: "API or integration client code",
   routes: "HTTP route definitions",
   controllers: "controller layer",
   services: "service layer",
+  store: "state store modules",
+  stores: "state store modules",
+  state: "state management modules",
+  slices: "state slices or reducers",
+  forms: "form components and workflows",
+  validation: "validation logic",
+  validators: "validation helpers",
+  auth: "authentication and authorization code",
+  middleware: "request middleware",
+  middlewares: "request middleware",
+  guards: "route or permission guards",
+  permissions: "permissions and access-control code",
+  i18n: "localization and i18n code",
+  locales: "locale dictionaries",
+  locale: "locale dictionaries",
+  messages: "translation messages",
+  translations: "translation dictionaries",
+  analytics: "analytics instrumentation",
+  tracking: "tracking instrumentation",
   tests: "test suite",
   e2e: "end-to-end tests",
   apps: "monorepo applications",
   packages: "monorepo packages",
   docs: "project documentation",
+  scripts: "project scripts and tooling",
+  cli: "CLI command code",
+  bin: "CLI entry points",
+  commands: "CLI or task command modules",
   prisma: "Prisma schema and migrations",
   public: "static assets",
-  styles: "global styles"
+  styles: "global styles",
+  seo: "SEO and metadata logic",
+  cms: "CMS integration layer",
+  content: "content data and content models",
+  jobs: "background jobs",
+  workers: "background workers"
 };
 
 const CONFIG_KIND_BY_FILE: Record<string, string> = {
@@ -88,6 +128,17 @@ const CONFIG_KIND_BY_FILE: Record<string, string> = {
   "next.config.js": "nextjs",
   "next.config.mjs": "nextjs",
   "next.config.ts": "nextjs",
+  "middleware.js": "middleware",
+  "middleware.ts": "middleware",
+  "sitemap.js": "seo",
+  "sitemap.ts": "seo",
+  "robots.js": "seo",
+  "robots.ts": "seo",
+  "manifest.js": "metadata",
+  "manifest.ts": "metadata",
+  "next-sitemap.config.js": "seo",
+  "next-sitemap.config.mjs": "seo",
+  "next-sitemap.config.ts": "seo",
   "vite.config.js": "vite",
   "vite.config.mjs": "vite",
   "vite.config.ts": "vite",
@@ -127,6 +178,7 @@ export async function analyzeRepository(repoRoot: string): Promise<RepoFacts> {
     repoRoot,
     repoName: basename(repoRoot),
     packageManager,
+    packageBins: detectPackageBins(rootPackageJson),
     languages: detectLanguages(files),
     frameworks: detectFrameworks(files, dependencies),
     packageScripts,
@@ -230,6 +282,13 @@ function packageRunCommand(packageManager: PackageManager, scriptName: string): 
   if (packageManager === "pnpm") return `pnpm ${scriptName}`;
   if (packageManager === "bun") return `bun run ${scriptName}`;
   return `npm run ${scriptName}`;
+}
+
+function detectPackageBins(rootPackageJson?: PackageJson): string[] {
+  const bin = rootPackageJson?.bin;
+  if (!bin) return [];
+  if (typeof bin === "string") return [bin];
+  return Object.values(bin);
 }
 
 function detectLanguages(files: string[]): string[] {
@@ -337,14 +396,10 @@ function normalizeWorkspacePatterns(workspaces?: PackageJson["workspaces"]): str
 function detectImportantDirectories(files: string[]): DirectoryInfo[] {
   const dirs = new Map<string, number>();
   for (const file of files) {
-    const firstSegment = file.split("/")[0];
-    if (IMPORTANT_DIRS[firstSegment]) {
-      dirs.set(firstSegment, (dirs.get(firstSegment) ?? 0) + 1);
-    }
-
-    const nestedKnownDir = file.split("/").find((segment) => IMPORTANT_DIRS[segment]);
-    if (nestedKnownDir) {
-      dirs.set(nestedKnownDir, (dirs.get(nestedKnownDir) ?? 0) + 1);
+    for (const segment of new Set(file.split("/"))) {
+      if (IMPORTANT_DIRS[segment]) {
+        dirs.set(segment, (dirs.get(segment) ?? 0) + 1);
+      }
     }
   }
 
@@ -617,7 +672,10 @@ async function findSourceTextMatches(repoRoot: string, files: string[]) {
 
   for (const file of sourceFiles) {
     const text = await readSmallText(join(repoRoot, file));
-    if (/react-router|createBrowserRouter|RouterProvider|RouteObject|<Routes\b/.test(text)) {
+    const hasReactRouterImport =
+      /import\s+.+\s+from\s+["']react-router(?:-dom)?["']|require\(["']react-router(?:-dom)?["']\)/.test(text);
+    const hasReactRouterJsx = /\.(t|j)sx$/.test(file) && /<Routes\b|<Route\b/.test(text);
+    if (hasReactRouterImport || hasReactRouterJsx) {
       matches.reactRouter.push(file);
     }
     if (/from ["']express["']|require\(["']express["']\)|express\(\)|Router\(\)|app\.(get|post|put|patch|delete)\(/.test(text)) {

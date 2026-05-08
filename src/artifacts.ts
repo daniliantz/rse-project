@@ -24,6 +24,7 @@ function buildEvidenceMarkdown(facts: RepoFacts, candidates: SkillCandidate[]): 
     `- Root: ${facts.repoRoot}`,
     `- Analyzed files: ${facts.analyzedFileCount}`,
     `- Package manager: ${facts.packageManager}`,
+    `- Package bins: ${facts.packageBins.join(", ") || "none"}`,
     "",
     "## Detected Stack",
     "",

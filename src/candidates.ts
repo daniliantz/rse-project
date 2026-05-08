@@ -1,7 +1,7 @@
 import type { EvidenceItem, RepoFacts, ReviewExample, SkillCandidate } from "./types.js";
 
-const MIN_CONFIDENCE = 0.65;
-const MAX_SKILLS = 8;
+const MIN_CONFIDENCE = 0.6;
+const MAX_SKILLS = 16;
 
 export function detectSkillCandidates(facts: RepoFacts): {
   candidates: SkillCandidate[];
@@ -9,14 +9,22 @@ export function detectSkillCandidates(facts: RepoFacts): {
 } {
   const allCandidates = [
     nextAppRouterCandidate(facts),
-    nextApiRoutesCandidate(facts),
     nextPagesRouterCandidate(facts),
     reactRouterCandidate(facts),
-    nodeApiCandidate(facts),
+    frontendScreenLayoutCandidate(facts),
     reactComponentCandidate(facts),
-    frontendApiStateCandidate(facts),
+    frontendFeatureModuleCandidate(facts),
+    frontendApiClientCandidate(facts),
+    frontendStateStoreCandidate(facts),
+    formValidationCandidate(facts),
+    nextApiRoutesCandidate(facts),
+    nodeApiCandidate(facts),
+    authAccessCandidate(facts),
+    seoMetadataCandidate(facts),
+    localizationCandidate(facts),
     monorepoWorkspaceCandidate(facts),
     testWorkflowCandidate(facts),
+    nodeCliWorkflowCandidate(facts),
     generatedFilesCandidate(facts),
     genericReactCandidate(facts),
     genericCleanCodeCandidate(facts)
@@ -255,10 +263,64 @@ function nodeApiCandidate(facts: RepoFacts): SkillCandidate | undefined {
   });
 }
 
+function frontendScreenLayoutCandidate(facts: RepoFacts): SkillCandidate | undefined {
+  if (!hasFrontend(facts)) return undefined;
+
+  const screenDirs = dirsByName(facts, ["app", "pages", "routes", "screens", "views"]);
+  const layoutDirs = dirsByName(facts, ["layouts"]);
+  const componentDirs = dirsByName(facts, ["components", "ui", "widgets", "shared", "styles"]);
+  const routeFiles = routeExampleFiles(facts);
+  if (screenDirs.length === 0 && layoutDirs.length === 0 && routeFiles.length === 0) return undefined;
+
+  const relevantDirs = unique([...screenDirs, ...layoutDirs, ...componentDirs]);
+  return candidate({
+    id: "frontend-screen-layout-workflow",
+    title: "Add screens using the repository layout workflow",
+    suggestedName: "frontend-screen-layout-workflow",
+    summary:
+      "Capture how this repository creates screen/page files, applies layouts or shells, composes shared UI, updates navigation, and validates UI route changes.",
+    confidence: score(0.69, relevantDirs.length + routeFiles.length, facts.packageScripts, ["React", "Next.js", "Vite"]),
+    reasons: [
+      "Frontend route/page/screen or layout signals were detected.",
+      "New screen work is often a distinct project recipe involving route placement, layout composition, navigation data, metadata, and validation."
+    ],
+    evidence: [
+      ...screenDirs.map((dir) => evidence("directory", dir.path, dir.reason, dir.confidence)),
+      ...layoutDirs.map((dir) => evidence("directory", dir.path, dir.reason, dir.confidence)),
+      ...componentDirs.slice(0, 5).map((dir) => evidence("directory", dir.path, dir.reason, dir.confidence)),
+      ...routeFiles.slice(0, 8).map((file) => evidence("file", file, "Route/page example involved in screen creation.", 0.82)),
+      ...scriptsEvidence(facts, ["dev", "build", "lint", "typecheck", "test"])
+    ],
+    relevantFiles: unique([
+      ...routeFiles.slice(0, 12),
+      ...relevantDirs.map((dir) => dir.path),
+      ...facts.entryPoints,
+      ...configFilesByKind(facts, ["typescript", "vite", "nextjs", "tailwind"]).map((config) => config.path)
+    ]),
+    review: {
+      userTask: "Add a new screen/page following the repository's existing layout and navigation conventions.",
+      expectedSkillUsage:
+        "Codex should use the skill before creating screen/page files, choosing layout composition, touching navigation, or validating route-level UI work.",
+      relevantFiles: unique([...routeFiles.slice(0, 8), ...relevantDirs.map((dir) => dir.path)]),
+      expectedAgentBehavior: [
+        "Inspect nearby screen/page examples and layout wrappers before adding files.",
+        "Follow existing placement, naming, navigation, metadata, and component composition conventions.",
+        "Run or recommend the closest UI validation command from package scripts."
+      ],
+      reviewerChecklist: [
+        "The new screen starts from the same files and layout pattern as nearby screens.",
+        "Navigation or metadata is updated only where this repository centralizes it.",
+        "The validation command matches package scripts."
+      ],
+      validationCommands: validationCommands(facts)
+    }
+  });
+}
+
 function reactComponentCandidate(facts: RepoFacts): SkillCandidate | undefined {
   if (!facts.frameworks.includes("React")) return undefined;
   const componentDirs = facts.importantDirectories.filter((dir) =>
-    ["components", "pages", "shared", "styles"].includes(dir.path)
+    ["components", "pages", "shared", "styles", "ui", "widgets"].includes(dir.path)
   );
   const componentEvidence = componentDirs.flatMap((dir) =>
     facts.configFiles
@@ -309,51 +371,347 @@ function reactComponentCandidate(facts: RepoFacts): SkillCandidate | undefined {
   });
 }
 
-function frontendApiStateCandidate(facts: RepoFacts): SkillCandidate | undefined {
-  if (!facts.frameworks.includes("React")) return undefined;
-  const workflowDirs = facts.importantDirectories.filter((dir) =>
-    ["api", "features", "hooks", "types", "shared", "services"].includes(dir.path)
-  );
-  if (workflowDirs.length < 2) return undefined;
+function frontendFeatureModuleCandidate(facts: RepoFacts): SkillCandidate | undefined {
+  if (!hasFrontend(facts)) return undefined;
 
+  const featureDirs = dirsByName(facts, ["features", "modules", "entities"]);
+  if (featureDirs.length === 0) return undefined;
+
+  const supportDirs = dirsByName(facts, ["components", "hooks", "types", "api", "services", "store", "stores", "state"]);
+  const workflowDirs = unique([...featureDirs, ...supportDirs]);
   return candidate({
-    id: "frontend-api-state-workflow",
-    title: "Add or modify frontend API and state workflow",
-    suggestedName: "frontend-api-state-workflow",
+    id: "frontend-feature-module-workflow",
+    title: "Add or extend frontend feature modules",
+    suggestedName: "frontend-feature-module-workflow",
     summary:
-      "Capture this repository's frontend API service, state management, shared type, hook, and validation conventions.",
-    confidence: score(0.67, workflowDirs.length, facts.packageScripts, ["React", "TypeScript"]),
+      "Capture how this repository groups feature-level UI, hooks, API access, types, and state when adding or extending a product feature.",
+    confidence: score(0.64, workflowDirs.length, facts.packageScripts, ["React", "TypeScript"]),
     reasons: [
-      "Frontend API/state directories were detected.",
-      "API and state changes are repo-specific because projects differ in service wrappers, typed response shapes, state registration, hooks, and error handling."
+      "Feature/module directories were detected in a frontend project.",
+      "Feature work often cuts across local UI, hooks, API calls, shared types, and state, but should still follow a repository-specific folder boundary."
     ],
     evidence: [
       ...workflowDirs.map((dir) => evidence("directory", dir.path, dir.reason, dir.confidence)),
-      ...facts.configFiles
-        .filter((config) => ["typescript", "vite", "eslint", "vitest"].includes(config.kind))
-        .map((config) => evidence("config", config.path, `Relevant ${config.kind} config for frontend API/state work.`, 0.72)),
+      ...configFilesByKind(facts, ["typescript", "vite", "nextjs", "eslint", "vitest"]).map((config) =>
+        evidence("config", config.path, `Relevant ${config.kind} config for feature-module work.`, 0.72)
+      ),
       ...scriptsEvidence(facts, ["build", "test", "lint", "typecheck"])
     ],
     relevantFiles: unique([
       ...workflowDirs.map((dir) => dir.path),
-      ...facts.configFiles
-        .filter((config) => ["typescript", "vite", "eslint", "vitest", "package manifest"].includes(config.kind))
-        .map((config) => config.path)
+      ...configFilesByKind(facts, ["typescript", "vite", "nextjs", "vitest", "package manifest"]).map(
+        (config) => config.path
+      )
     ]),
     review: {
-      userTask: "Add frontend data fetching or shared state for an existing feature.",
+      userTask: "Add a feature using the repository's existing feature/module structure.",
       expectedSkillUsage:
-        "Codex should use the skill before adding API service calls, state slices/stores, shared response types, hooks, or frontend error-handling paths.",
+        "Codex should use the skill before adding feature-scoped UI, hooks, API calls, state, shared types, or tests.",
       relevantFiles: workflowDirs.map((dir) => dir.path),
       expectedAgentBehavior: [
-        "Inspect nearby API services, state modules, hooks, and shared types before adding new ones.",
-        "Reuse the repository's API client/wrapper and typed response conventions.",
-        "Register new state in the existing store/provider pattern when the repo has one."
+        "Inspect a nearby feature before choosing the file layout.",
+        "Keep feature-local and shared code in the same boundaries already used by the repository.",
+        "Update cross-layer wiring only where similar features do so."
+      ],
+      reviewerChecklist: [
+        "The new feature follows the existing feature folder shape.",
+        "Shared hooks, types, API calls, and state are not placed ad hoc.",
+        "Validation commands match package scripts."
+      ],
+      validationCommands: validationCommands(facts)
+    }
+  });
+}
+
+function frontendApiClientCandidate(facts: RepoFacts): SkillCandidate | undefined {
+  if (!hasFrontend(facts)) return undefined;
+
+  const apiDirs = dirsByName(facts, ["api", "services", "clients", "client"]);
+  if (apiDirs.length === 0) return undefined;
+
+  const supportDirs = dirsByName(facts, ["hooks", "types", "schemas", "models", "shared", "lib"]);
+  const workflowDirs = unique([...apiDirs, ...supportDirs]);
+  return candidate({
+    id: "frontend-api-client-workflow",
+    title: "Wire frontend API client calls",
+    suggestedName: "frontend-api-client-workflow",
+    summary:
+      "Capture how this repository adds frontend API/service calls, shared response types, request helpers, hooks, and error-handling conventions.",
+    confidence: score(0.66, workflowDirs.length, facts.packageScripts, ["React", "TypeScript"]),
+    reasons: [
+      "Frontend API/client/service directories were detected.",
+      "API-client work is repo-specific because projects differ in wrapper clients, typed response shapes, hooks, error handling, and where service calls are allowed."
+    ],
+    evidence: [
+      ...apiDirs.map((dir) => evidence("directory", dir.path, dir.reason, dir.confidence)),
+      ...supportDirs.map((dir) => evidence("directory", dir.path, dir.reason, dir.confidence)),
+      ...scriptsEvidence(facts, ["build", "test", "lint", "typecheck"])
+    ],
+    relevantFiles: unique([
+      ...workflowDirs.map((dir) => dir.path),
+      ...configFilesByKind(facts, ["typescript", "vite", "nextjs", "package manifest"]).map((config) => config.path)
+    ]),
+    review: {
+      userTask: "Add frontend data fetching for an existing screen or feature.",
+      expectedSkillUsage:
+        "Codex should use the skill before adding service/client methods, typed responses, request hooks, or frontend error handling.",
+      relevantFiles: workflowDirs.map((dir) => dir.path),
+      expectedAgentBehavior: [
+        "Inspect existing API/client/service examples before adding calls.",
+        "Reuse the repository's request helper, response typing, and error conventions.",
+        "Connect data fetching through existing hooks or feature patterns when present."
       ],
       reviewerChecklist: [
         "API calls go through the repository's existing client/service abstraction.",
-        "State and hooks follow nearby feature patterns.",
-        "Shared types and validation commands match existing frontend conventions."
+        "Types and errors follow nearby examples.",
+        "Validation commands match package scripts."
+      ],
+      validationCommands: validationCommands(facts)
+    }
+  });
+}
+
+function frontendStateStoreCandidate(facts: RepoFacts): SkillCandidate | undefined {
+  if (!hasFrontend(facts)) return undefined;
+
+  const stateDirs = dirsByName(facts, ["store", "stores", "state", "slices"]);
+  const featureDirs = dirsByName(facts, ["features", "modules"]);
+  const hookDirs = dirsByName(facts, ["hooks"]);
+  if (stateDirs.length === 0 && !(featureDirs.length > 0 && hookDirs.length > 0)) return undefined;
+
+  const workflowDirs = unique([...stateDirs, ...featureDirs, ...hookDirs, ...dirsByName(facts, ["types"])]);
+  return candidate({
+    id: "frontend-state-store-workflow",
+    title: "Update frontend store and state workflow",
+    suggestedName: "frontend-state-store-workflow",
+    summary:
+      "Capture how this repository adds store/state/cache behavior, registers providers or slices, exposes selectors/hooks, and validates stateful UI changes.",
+    confidence: score(stateDirs.length > 0 ? 0.67 : 0.61, workflowDirs.length, facts.packageScripts, [
+      "React",
+      "TypeScript"
+    ]),
+    reasons: [
+      "Frontend state/store or feature-plus-hook signals were detected.",
+      "State work is repo-specific because registration, selectors, providers, persistence, cache invalidation, and hook usage differ across repositories."
+    ],
+    evidence: [
+      ...workflowDirs.map((dir) => evidence("directory", dir.path, dir.reason, dir.confidence)),
+      ...scriptsEvidence(facts, ["build", "test", "lint", "typecheck"])
+    ],
+    relevantFiles: unique([
+      ...workflowDirs.map((dir) => dir.path),
+      ...configFilesByKind(facts, ["typescript", "vite", "nextjs", "package manifest"]).map((config) => config.path)
+    ]),
+    review: {
+      userTask: "Add state for an existing frontend feature.",
+      expectedSkillUsage:
+        "Codex should use the skill before adding store modules, slices, selectors, providers, state hooks, or cache updates.",
+      relevantFiles: workflowDirs.map((dir) => dir.path),
+      expectedAgentBehavior: [
+        "Inspect existing store/state registration before creating new state.",
+        "Expose selectors/hooks using the repository's naming and placement conventions.",
+        "Validate stateful UI through the closest build, typecheck, or test script."
+      ],
+      reviewerChecklist: [
+        "New state is registered in the same place as existing state.",
+        "Selectors/hooks follow existing naming and import patterns.",
+        "Validation commands match package scripts."
+      ],
+      validationCommands: validationCommands(facts)
+    }
+  });
+}
+
+function formValidationCandidate(facts: RepoFacts): SkillCandidate | undefined {
+  const formDirs = dirsByName(facts, ["forms", "validation", "validators", "schemas"]);
+  if (formDirs.length === 0) return undefined;
+
+  const supportDirs = dirsByName(facts, ["components", "features", "hooks", "types", "api", "services"]);
+  const workflowDirs = unique([...formDirs, ...supportDirs]);
+  return candidate({
+    id: "form-validation-workflow",
+    title: "Wire forms and validation",
+    suggestedName: "form-validation-workflow",
+    summary:
+      "Capture how this repository structures forms, validation schemas, submit flows, API handoff, and field/error display conventions.",
+    confidence: score(0.65, workflowDirs.length, facts.packageScripts, ["React", "TypeScript"]),
+    reasons: [
+      "Form, schema, or validation directories were detected.",
+      "Form work is project-specific when schemas, submit handlers, server/client validation, and error display are wired through local helpers."
+    ],
+    evidence: [
+      ...workflowDirs.map((dir) => evidence("directory", dir.path, dir.reason, dir.confidence)),
+      ...scriptsEvidence(facts, ["build", "test", "lint", "typecheck"])
+    ],
+    relevantFiles: unique([
+      ...workflowDirs.map((dir) => dir.path),
+      ...configFilesByKind(facts, ["typescript", "vite", "nextjs", "package manifest"]).map((config) => config.path)
+    ]),
+    review: {
+      userTask: "Add or change a form using the repository's validation and submit conventions.",
+      expectedSkillUsage:
+        "Codex should use the skill before changing form components, validation schemas, submit handlers, field errors, or API handoff.",
+      relevantFiles: workflowDirs.map((dir) => dir.path),
+      expectedAgentBehavior: [
+        "Inspect similar forms and schemas before editing.",
+        "Reuse the repository's validation, submit, and error-display patterns.",
+        "Run or recommend the nearest validation command."
+      ],
+      reviewerChecklist: [
+        "Schema and form field behavior follow similar forms.",
+        "Submit/error handling uses existing helpers or conventions.",
+        "Validation commands match package scripts."
+      ],
+      validationCommands: validationCommands(facts)
+    }
+  });
+}
+
+function authAccessCandidate(facts: RepoFacts): SkillCandidate | undefined {
+  const authDirs = dirsByName(facts, ["auth", "middleware", "middlewares", "guards", "permissions"]);
+  const authConfigs = configFilesByKind(facts, ["middleware"]);
+  if (authDirs.length === 0 && authConfigs.length === 0) return undefined;
+
+  const routeFiles = routeExampleFiles(facts);
+  const workflowDirs = unique([...authDirs, ...dirsByName(facts, ["api", "routes", "controllers", "server"])]);
+  return candidate({
+    id: "auth-access-workflow",
+    title: "Work with authentication and access control",
+    suggestedName: "auth-access-workflow",
+    summary:
+      "Capture this repository's auth, middleware, guard, permission, route protection, and validation conventions.",
+    confidence: score(0.66, workflowDirs.length + authConfigs.length, facts.packageScripts, [
+      "Next.js",
+      "Express",
+      "Fastify",
+      "NestJS"
+    ]),
+    reasons: [
+      "Authentication, middleware, guard, or permission signals were detected.",
+      "Auth and access-control work is high-risk and strongly repository-specific because route protection, user context, redirects, and error responses differ."
+    ],
+    evidence: [
+      ...workflowDirs.map((dir) => evidence("directory", dir.path, dir.reason, dir.confidence)),
+      ...authConfigs.map((config) => evidence("config", config.path, `Relevant ${config.kind} config for auth/access work.`, 0.78)),
+      ...routeFiles.slice(0, 6).map((file) => evidence("file", file, "Route example that may participate in access control.", 0.7)),
+      ...scriptsEvidence(facts, ["build", "test", "lint", "typecheck"])
+    ],
+    relevantFiles: unique([
+      ...workflowDirs.map((dir) => dir.path),
+      ...authConfigs.map((config) => config.path),
+      ...routeFiles.slice(0, 8)
+    ]),
+    review: {
+      userTask: "Add or modify access control for a protected route or API endpoint.",
+      expectedSkillUsage:
+        "Codex should use the skill before changing auth middleware, guards, permissions, route protection, user context, redirects, or unauthorized responses.",
+      relevantFiles: unique([...workflowDirs.map((dir) => dir.path), ...authConfigs.map((config) => config.path)]),
+      expectedAgentBehavior: [
+        "Trace how existing routes or endpoints determine user access before editing.",
+        "Reuse the repository's guard, middleware, redirect, and unauthorized-response conventions.",
+        "Treat missing auth evidence as uncertainty instead of inventing a new scheme."
+      ],
+      reviewerChecklist: [
+        "Protected routes or endpoints use the existing access-control path.",
+        "Unauthorized behavior matches nearby examples.",
+        "Validation commands match package scripts."
+      ],
+      validationCommands: validationCommands(facts)
+    }
+  });
+}
+
+function seoMetadataCandidate(facts: RepoFacts): SkillCandidate | undefined {
+  const seoDirs = dirsByName(facts, ["seo", "content", "cms"]);
+  const seoConfigs = configFilesByKind(facts, ["seo", "metadata"]);
+  const nextRouteFiles = facts.routePatterns
+    .filter((route) => route.kind === "next-app-router" || route.kind === "next-pages-router")
+    .flatMap((route) => route.files);
+
+  if (seoDirs.length === 0 && seoConfigs.length === 0 && nextRouteFiles.length === 0) return undefined;
+  if (!facts.frameworks.includes("Next.js") && seoDirs.length === 0 && seoConfigs.length === 0) return undefined;
+
+  return candidate({
+    id: "seo-metadata-workflow",
+    title: "Update SEO metadata and sitemap workflow",
+    suggestedName: "seo-metadata-workflow",
+    summary:
+      "Capture how this repository manages page metadata, sitemap/robots files, manifest data, content-derived SEO fields, and validation for public routes.",
+    confidence: score(0.62, seoDirs.length + seoConfigs.length + nextRouteFiles.length, facts.packageScripts, [
+      "Next.js",
+      "React"
+    ]),
+    reasons: [
+      "SEO, metadata, sitemap, manifest, content, CMS, or Next.js route signals were detected.",
+      "SEO changes are repo-specific when metadata is derived from routes, content models, static files, or framework-specific conventions."
+    ],
+    evidence: [
+      ...seoDirs.map((dir) => evidence("directory", dir.path, dir.reason, dir.confidence)),
+      ...seoConfigs.map((config) => evidence("config", config.path, `Relevant ${config.kind} file.`, 0.78)),
+      ...nextRouteFiles.slice(0, 8).map((file) => evidence("file", file, "Public route example that may define metadata.", 0.72)),
+      ...scriptsEvidence(facts, ["build", "test", "lint", "typecheck"])
+    ],
+    relevantFiles: unique([
+      ...seoDirs.map((dir) => dir.path),
+      ...seoConfigs.map((config) => config.path),
+      ...nextRouteFiles.slice(0, 10)
+    ]),
+    review: {
+      userTask: "Update metadata, sitemap, or route SEO behavior for a public page.",
+      expectedSkillUsage:
+        "Codex should use the skill before changing page metadata, sitemap/robots/manifest files, content-derived SEO fields, or public route indexing behavior.",
+      relevantFiles: unique([...seoDirs.map((dir) => dir.path), ...seoConfigs.map((config) => config.path), ...nextRouteFiles.slice(0, 6)]),
+      expectedAgentBehavior: [
+        "Inspect existing route metadata and SEO files before editing.",
+        "Keep content-derived metadata and route-level metadata consistent with nearby examples.",
+        "Run or recommend a build/typecheck command when metadata is statically generated."
+      ],
+      reviewerChecklist: [
+        "Metadata source matches existing route/content conventions.",
+        "Sitemap, robots, or manifest changes are included only when the repository has those files.",
+        "Validation commands match package scripts."
+      ],
+      validationCommands: validationCommands(facts)
+    }
+  });
+}
+
+function localizationCandidate(facts: RepoFacts): SkillCandidate | undefined {
+  const localeDirs = dirsByName(facts, ["i18n", "locales", "locale", "messages", "translations"]);
+  if (localeDirs.length === 0) return undefined;
+
+  const routeFiles = routeExampleFiles(facts);
+  return candidate({
+    id: "localization-workflow",
+    title: "Add localization using repository conventions",
+    suggestedName: "localization-workflow",
+    summary:
+      "Capture how this repository stores translation messages, wires locale-aware routes/components, and validates localization changes.",
+    confidence: score(0.65, localeDirs.length + routeFiles.length, facts.packageScripts, ["React", "Next.js", "TypeScript"]),
+    reasons: [
+      "Localization directories were detected.",
+      "Localization work is repo-specific because message storage, key naming, locale routing, fallbacks, and component access patterns vary widely."
+    ],
+    evidence: [
+      ...localeDirs.map((dir) => evidence("directory", dir.path, dir.reason, dir.confidence)),
+      ...routeFiles.slice(0, 6).map((file) => evidence("file", file, "Route/component example that may be locale-aware.", 0.68)),
+      ...scriptsEvidence(facts, ["build", "test", "lint", "typecheck"])
+    ],
+    relevantFiles: unique([...localeDirs.map((dir) => dir.path), ...routeFiles.slice(0, 8)]),
+    review: {
+      userTask: "Add translated UI text or a locale-aware page.",
+      expectedSkillUsage:
+        "Codex should use the skill before editing translation dictionaries, locale routing, localized metadata, or components that read localized messages.",
+      relevantFiles: localeDirs.map((dir) => dir.path),
+      expectedAgentBehavior: [
+        "Inspect existing translation key naming and locale fallback patterns.",
+        "Update every locale file required by similar examples.",
+        "Validate with the closest build/typecheck/test command."
+      ],
+      reviewerChecklist: [
+        "Translation keys follow existing naming.",
+        "All required locale dictionaries are updated.",
+        "Validation commands match package scripts."
       ],
       validationCommands: validationCommands(facts)
     }
@@ -449,6 +807,62 @@ function testWorkflowCandidate(facts: RepoFacts): SkillCandidate | undefined {
   });
 }
 
+function nodeCliWorkflowCandidate(facts: RepoFacts): SkillCandidate | undefined {
+  if (!facts.frameworks.includes("Node.js")) return undefined;
+
+  const cliDirs = dirsByName(facts, ["cli", "bin", "commands", "scripts"]);
+  const entryPoints = facts.entryPoints.filter((file) => /(^|\/)(index|main)\.(t|j)sx?$/.test(file));
+  if (facts.packageBins.length === 0 && cliDirs.length === 0) return undefined;
+
+  const packageManifest = configFilesByKind(facts, ["package manifest"]);
+  const relevantFiles = unique([
+    ...entryPoints,
+    ...cliDirs.map((dir) => dir.path),
+    ...packageManifest.map((config) => config.path),
+    ...configFilesByKind(facts, ["typescript"]).map((config) => config.path)
+  ]);
+
+  return candidate({
+    id: "node-cli-workflow",
+    title: "Work on the repository CLI entrypoint",
+    suggestedName: "node-cli-workflow",
+    summary:
+      "Capture how this repository exposes a Node CLI, connects package bin entries to source entrypoints, parses arguments, runs commands, and validates builds.",
+    confidence: score(0.68, facts.packageBins.length + cliDirs.length + entryPoints.length, facts.packageScripts, [
+      "Node.js",
+      "TypeScript"
+    ]),
+    reasons: [
+      "A package bin or CLI-oriented directory was detected.",
+      "CLI work is repo-specific because bin mapping, argument parsing, command orchestration, subprocess execution, and build output conventions differ."
+    ],
+    evidence: [
+      ...facts.packageBins.map((bin) => evidence("config", "package.json", `Package bin points to ${bin}.`, 0.86)),
+      ...entryPoints.map((file) => evidence("file", file, "Potential CLI source entrypoint.", 0.78)),
+      ...cliDirs.map((dir) => evidence("directory", dir.path, dir.reason, dir.confidence)),
+      ...scriptsEvidence(facts, ["dev", "start", "build", "typecheck", "test"])
+    ],
+    relevantFiles,
+    review: {
+      userTask: "Add or modify CLI behavior using this repository's existing command flow.",
+      expectedSkillUsage:
+        "Codex should use the skill before changing CLI argument parsing, package bin mapping, command orchestration, subprocess execution, or build output assumptions.",
+      relevantFiles,
+      expectedAgentBehavior: [
+        "Trace package bin mapping to the source entrypoint before editing.",
+        "Follow existing argument parsing, error handling, logging, and subprocess conventions.",
+        "Run or recommend build/typecheck and a representative CLI invocation."
+      ],
+      reviewerChecklist: [
+        "Package bin and source entrypoint remain consistent.",
+        "CLI errors and output follow existing conventions.",
+        "Validation commands match package scripts."
+      ],
+      validationCommands: validationCommands(facts)
+    }
+  });
+}
+
 function generatedFilesCandidate(facts: RepoFacts): SkillCandidate | undefined {
   if (facts.generatedFilePatterns.length === 0 && facts.doNotEditPatterns.length === 0) return undefined;
 
@@ -457,7 +871,7 @@ function generatedFilesCandidate(facts: RepoFacts): SkillCandidate | undefined {
     title: "Work safely around generated and do-not-edit files",
     suggestedName: "generated-files-safety",
     summary: "Capture repository-specific generated files, lockfiles, and safe edit boundaries.",
-    confidence: facts.generatedFilePatterns.length > 0 ? 0.72 : 0.62,
+    confidence: facts.generatedFilePatterns.length > 0 ? 0.72 : 0.58,
     reasons: [
       "Generated or do-not-edit file patterns were detected.",
       "Agents need explicit guidance to avoid editing generated outputs directly."
@@ -523,6 +937,24 @@ function genericCleanCodeCandidate(facts: RepoFacts): SkillCandidate | undefined
     review: emptyReview("Write clean code."),
     rejectionReason: "Generic clean-code guidance is not useful as a repo-specific skill."
   });
+}
+
+function hasFrontend(facts: RepoFacts): boolean {
+  return ["React", "Next.js", "Vite"].some((framework) => facts.frameworks.includes(framework));
+}
+
+function dirsByName(facts: RepoFacts, names: string[]): RepoFacts["importantDirectories"] {
+  const nameSet = new Set(names);
+  return facts.importantDirectories.filter((dir) => nameSet.has(dir.path));
+}
+
+function configFilesByKind(facts: RepoFacts, kinds: string[]): RepoFacts["configFiles"] {
+  const kindSet = new Set(kinds);
+  return facts.configFiles.filter((config) => kindSet.has(config.kind));
+}
+
+function routeExampleFiles(facts: RepoFacts): string[] {
+  return unique(facts.routePatterns.flatMap((route) => route.files));
 }
 
 function candidate(input: {

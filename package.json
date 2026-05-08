@@ -1,6 +1,6 @@
 {
   "name": "rse-project",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Extract repo-specific Codex skill candidates from a local repository and ask local Codex to write project skills.",
   "type": "module",
   "bin": {
